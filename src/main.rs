@@ -31,11 +31,6 @@ async fn main() -> Result<(), Error> {
     get_ride_data().await;
     Ok(())
 }
-/*async fn get_ride_data(e: LambdaEvent<CustomEvent>) -> Result<Value, Error> {
-let payload = e.payload;
-
-}
-*/
 
 async fn get_ride_data(e: LambdaEvent<CustomEvent>) -> Result<Value, Error> {
     let payload = e.payload;
