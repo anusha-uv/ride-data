@@ -28,7 +28,6 @@ struct CustomOutput {
 async fn main() -> Result<(), Error> {
     let func = service_fn(get_ride_data);
     lambda_runtime::run(func).await?;
-    get_ride_data().await;
     Ok(())
 }
 
