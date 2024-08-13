@@ -9,11 +9,12 @@ use std::collections::HashMap;
 use aws_sdk_dynamodb::error::SdkError;
 use aws_sdk_dynamodb::operation::query::QueryError;
 use anyhow::Result;
-use chrono::{NaiveDateTime, TimeZone, Utc,  Datelike};
+use chrono::{NaiveDateTime, TimeZone, Utc, FixedOffset};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 struct CustomEvent {
     imeis: String,
+    input_ride_month: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -25,16 +26,19 @@ struct CustomOutput {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    // let func = service_fn(get_ride_data);
-    // lambda_runtime::run(func).await?;
+    let func = service_fn(get_ride_data);
+    lambda_runtime::run(func).await?;
     get_ride_data().await;
     Ok(())
 }
+/*async fn get_ride_data(e: LambdaEvent<CustomEvent>) -> Result<Value, Error> {
+let payload = e.payload;
 
-async fn get_ride_data() -> Result<Value, Error> {
-    let payload: CustomEvent = CustomEvent {
-        imeis: "866308064311640,866308064309362".to_string(),
-    } ;
+}
+*/
+
+async fn get_ride_data(e: LambdaEvent<CustomEvent>) -> Result<Value, Error> {
+    let payload = e.payload;
 
     if payload.imeis.is_empty() {
         println!("Imei cannot be empty");
@@ -57,8 +61,6 @@ async fn get_ride_data() -> Result<Value, Error> {
             }
         };
 
-        let mut total_distance=0.0;
-        let mut ride_month= String::new();
         for item in items.iter() {
             if item.get("ride_type").and_then(|v| v.as_s().ok()).unwrap_or(&"NA".to_string()) != "trip" {
                 continue;
@@ -68,26 +70,32 @@ async fn get_ride_data() -> Result<Value, Error> {
                 .and_then(|s| s.parse::<u64>().ok()).unwrap();
 
             let naive = NaiveDateTime::from_timestamp(ride_start as i64, 0);
-            let datetime = Utc.from_utc_datetime(&naive);
+            let offset = FixedOffset::east(5 * 3600 + 1800); 
+            let datetime = Utc.from_utc_datetime(&naive).with_timezone(&offset);
+            let ride_month = datetime.format("%Y-%m").to_string();
 
-            let year = datetime.year();
-            let month = datetime.month();
+            let year_str = ride_month.split('-').next().unwrap();
+            let year: u32 = year_str.parse().unwrap();
             if year==2024 || year == 2023{
-            ride_month = format!("{}-{}", year, month);
+                if let Some(input_month) = &payload.input_ride_month {
+                    if &ride_month != input_month {
+                        continue;
+                    }
+                }
+                let ride_stats_map = item.get("ride_stats").and_then(|v| v.as_m().ok()).unwrap();
 
-            let ride_stats_map = item.get("ride_stats").and_then(|v| v.as_m().ok()).unwrap();
-
-            let total_distance_str = ride_stats_map.get("ride_distance").and_then(|v| v.as_s().ok()).unwrap();
-            let distance: f64 = total_distance_str.parse().unwrap_or(0.0);
-            let key = (imei.to_string(), ride_month.clone());
-            let value = imei_month_distance.entry(key).or_insert(0.0);
-            *value += distance;
+                let total_distance_str = ride_stats_map.get("ride_distance").and_then(|v| v.as_s().ok()).unwrap();
+                let distance: f64 = total_distance_str.parse().unwrap_or(0.0);
+                let key = (imei.to_string(), ride_month.clone());
+                let value = imei_month_distance.entry(key).or_insert(0.0);
+                *value += distance;
+                
             }
         }
     }
 
     // Put data to new table
-    for ((imei, ride_month), total_distance) in imei_month_distance.iter() {
+     for ((imei, ride_month), total_distance) in imei_month_distance.iter() {
         client.put_item()
             .table_name("ride_data_monthly_distance")
             .item("imei", AttributeValue::S(imei.clone()))
@@ -95,7 +103,7 @@ async fn get_ride_data() -> Result<Value, Error> {
             .item("total_distance", AttributeValue::N(total_distance.to_string()))
             .send()
             .await?;
-    }
+    } 
 
     for ((imei, ride_month), total_distance) in imei_month_distance.iter(){
         println!("imei: {}", imei);
@@ -132,3 +140,5 @@ async fn query_ride_new(
 
     Ok(resp.items)
 }
+
+
