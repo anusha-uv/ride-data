@@ -87,7 +87,7 @@ async fn get_ride_data() -> Result<Value, Error> {
     }
 
     // Put data to new table
-    /* for ((imei, ride_month), total_distance) in imei_month_distance.iter() {
+    for ((imei, ride_month), total_distance) in imei_month_distance.iter() {
         client.put_item()
             .table_name("ride_data_monthly_distance")
             .item("imei", AttributeValue::S(imei.clone()))
@@ -95,7 +95,7 @@ async fn get_ride_data() -> Result<Value, Error> {
             .item("total_distance", AttributeValue::N(total_distance.to_string()))
             .send()
             .await?;
-    }*/
+    }
 
     for ((imei, ride_month), total_distance) in imei_month_distance.iter(){
         println!("imei: {}", imei);
